@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ShouZhu" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:statusBarColor">#f6f4f0</item>
+        <item name="android:navigationBarColor">#f6f4f0</item>
+        <item name="android:windowBackground">#f6f4f0</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
