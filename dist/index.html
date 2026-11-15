@@ -981,6 +981,7 @@ html.lite * { transition: none !important; }
   <div id="coachBody" class="coach-body"></div>
   <div class="row">
     <button class="ghost" id="coachPlan">排进接下来 3 天</button>
+    <button class="ghost" id="coachToday">今天加一块</button>
   </div>
   <div class="row">
     <input id="coachQ" class="coach-input" placeholder="想改什么？比如：每天只有 1 小时" />
@@ -1724,7 +1725,15 @@ if (typeof window !== "undefined") window.Planner = Planner;
 
     // 2) 手动加/推迟的块：覆盖当天
     Object.keys(state.custom || {}).forEach((k) => {
-      if ((state.custom[k] || []).length) p.plan[k] = state.custom[k].map((b) => ({ ...b }));
+      const extra = state.custom[k] || [];
+      if (!extra.length) return;
+      const base = p.plan[k] || [];
+      const seen = new Set(base.map((b) => b.deadlineId + "|" + b.title + "|" + b.minutes));
+      extra.forEach((b) => {
+        const sig = b.deadlineId + "|" + b.title + "|" + b.minutes;
+        if (!seen.has(sig)) { base.push({ ...b, manual: b.manual || !b.fromPlan }); seen.add(sig); }
+      });
+      p.plan[k] = base;
     });
 
     // 3) 每天不超过预算（留出容错）：优先砍自动块，规划块保留
@@ -2758,7 +2767,9 @@ if (typeof window !== "undefined") window.Planner = Planner;
     if ((m = q.match(/手机.{0,8}?(\d+(?:\.\d+)?)\s*(?:小时|h)/i))) acts.push({ type: "phone", value: Number(m[1]) });
     if ((m = q.match(/(?:每块|块长|一块).{0,8}?(\d+)\s*分钟/))) acts.push({ type: "block", value: Number(m[1]) });
     if ((m = q.match(/每天.{0,6}?(\d+)\s*个?块/))) acts.push({ type: "blocksPerDay", value: Number(m[1]) });
-    if (/今天/.test(q) && (m = q.match(/(?:加|安排|来|放)(?:一|1)?\s*块?\s*[「"]?([\u4e00-\u9fa5A-Za-z]{2,10})[」"]?\s*(\d+)?\s*分钟?/))) {
+   if (/今天/.test(q) && /(安排|加).{0,4}(块|一个)|来一块|排一块/.test(q) && !/(\d+)\s*分钟/.test(q)) {
+      acts.push({ type: "addBlock", title: "", minutes: 0 });   // 0 表示用当前 DDL 的块长
+    } else if (/今天/.test(q) && (m = q.match(/(?:加|安排|来|放)(?:一|1)?\s*块?\s*[「"]?([\u4e00-\u9fa5A-Za-z]{2,10})[」"]?\s*(\d+)?\s*分钟?/))) {
       acts.push({ type: "addBlock", title: m[1], minutes: Number(m[2] || 25) });
     }
     return acts;
@@ -2781,11 +2792,15 @@ if (typeof window !== "undefined") window.Planner = Planner;
         state.settings.blockMin = Math.max(5, Math.floor(cap / a.value / 5) * 5);
         done.push(`每天 ${a.value} 块（每块 ${state.settings.blockMin} 分钟）`);
       }
-      if (a.type === "addBlock" && a.title) {
+     if (a.type === "addBlock") {
+        const target = a.title || (coachDl ? coachDl.title : "");
+        if (!target) { done.push("要先打开某个 DDL 的规划再说"); continue; }
+        const mins = a.minutes || (coachDl ? clampMin(coachDl.chunk, 45) : 25);
         if (!state.todayPlan || state.todayPlan.date !== todayKey()) freezeToday(plan());
-        state.todayPlan.blocks.push({ deadlineId: "manual", title: a.title, minutes: Math.min(240, Math.max(5, a.minutes)), due: todayKey(), manual: true });
+        const dl = findDeadline(target);
+        state.todayPlan.blocks.push({ deadlineId: dl ? dl.id : "manual", title: target, minutes: Math.min(240, Math.max(5, mins)), due: dl ? dl.due : todayKey(), manual: !dl });
         state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
-        done.push(`今天加了「${a.title} ${a.minutes} 分钟」`);
+        done.push(`今天加了「${target} ${mins} 分钟」`);
       }
     }
     if (done.length) { persist(); renderAll(); }
@@ -3526,7 +3541,17 @@ async function lanTest() {
     document.getElementById("coachClose").addEventListener("click", () => { document.getElementById("coachMask").hidden = true; document.getElementById("coachSheet").hidden = true; coachDl = null; renderAll(); });
     document.getElementById("coachMask").addEventListener("click", () => { document.getElementById("coachMask").hidden = true; document.getElementById("coachSheet").hidden = true; coachDl = null; renderAll(); });
     document.getElementById("coachSend").addEventListener("click", coachSend);
-    document.getElementById("coachPlan").addEventListener("click", () => materializeCoach(3));
+   document.getElementById("coachPlan").addEventListener("click", () => materializeCoach(3));
+    document.getElementById("coachToday").addEventListener("click", () => {
+      if (!coachDl) return;
+      const mins = clampMin(coachDl.chunk, 45);
+      if (!state.todayPlan || state.todayPlan.date !== todayKey()) freezeToday(plan());
+      if (!state.todayPlan) freezeToday(plan());
+      state.todayPlan.blocks.push({ deadlineId: coachDl.id, title: coachDl.title, minutes: mins, due: coachDl.due, label: "今天加排" });
+      state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
+      persist(); renderAll(); renderCoach();
+      toast("已在今天加一块「" + coachDl.title + " " + mins + " 分钟」", 2400);
+    });
     document.getElementById("actApply").addEventListener("click", () => { applyActions(pendingActions); closeActions(); });
     // 多端同步
     const sToken = document.getElementById("syncToken");
