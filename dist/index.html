@@ -2371,20 +2371,30 @@ if (typeof window !== "undefined") window.Planner = Planner;
   }
 
   /** 在安排页直接标记某个 DDL 完成 */
+  /** 把一个 DDL 的所有块从今天/日历/自定义里彻底清掉 */
+  function purgeDdlBlocks(id) {
+    if (state.todayPlan && state.todayPlan.date === todayKey()) {
+      state.todayPlan.blocks = (state.todayPlan.blocks || []).filter((b) => b.deadlineId !== id);
+      state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
+    }
+    if (state.planBlocks && state.planBlocks[id]) delete state.planBlocks[id];
+    Object.keys(state.custom || {}).forEach((k) => {
+      const list = (state.custom[k] || []).filter((b) => b.deadlineId !== id);
+      if (list.length) state.custom[k] = list;
+      else delete state.custom[k];
+    });
+  }
+
   function completeDdl(id) {
     const d = state.deadlines.find((x) => x.id === id);
     if (!d) return;
     if (!confirm("把「" + d.title + "」标记为已完成？")) return;
     d.done = true;
     d.remainingMin = 0;
-    if (state.todayPlan && state.todayPlan.date === todayKey()) {
-      state.todayPlan.blocks = state.todayPlan.blocks.filter((b) => b.deadlineId !== d.id);
-      state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
-    }
-    if (state.planBlocks && state.planBlocks[d.id]) delete state.planBlocks[d.id];
+    purgeDdlBlocks(d.id);
     persist();
     renderAll();
-    toast("「" + d.title + "」已完成", 2200);
+    toast("「" + d.title + "」已完成，已从今天和日历撤掉", 2400);
   }
   /* ---------------- 时间轴 ---------------- */
   function renderTimeline() {
@@ -3749,7 +3759,7 @@ async function lanTest() {
 
   window.App = {
     setPhoneHours, seedDemo, renderAll, switchView, state: () => state,
-    startFocus, importShot, coachData, answerAsk, finishFocus, completeDdl, applyActions, findDeadline,
+    startFocus, importShot, coachData, answerAsk, finishFocus, completeDdl, applyActions, findDeadline, getPlan: () => plan(),
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
