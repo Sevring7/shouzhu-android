@@ -45,7 +45,7 @@ class ReminderReceiver : BroadcastReceiver() {
         private const val REQ = 2002
 
         /** hour = 0 表示关闭 */
-        fun schedule(context: Context, hour: Int) {
+        fun schedule(context: Context, hour: Int, minute: Int = 0) {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val pi = pendingIntent(context)
             am.cancel(pi)
@@ -53,7 +53,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             val cal = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, hour)
-                set(Calendar.MINUTE, 0)
+                set(Calendar.MINUTE, minute)
                 set(Calendar.SECOND, 0)
                 if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
             }
