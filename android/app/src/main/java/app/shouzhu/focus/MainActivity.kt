@@ -136,10 +136,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun scheduleReminder(hour: Int) {
+        fun scheduleReminder(hour: Int, minute: Int) {
             val c = ctx ?: return
-            c.getSharedPreferences("shouzhu", Context.MODE_PRIVATE).edit().putInt("reminderHour", hour).apply()
-            ReminderReceiver.schedule(c, hour)
+            c.getSharedPreferences("shouzhu", Context.MODE_PRIVATE).edit()
+                .putInt("reminderHour", hour).putInt("reminderMinute", minute).apply()
+            ReminderReceiver.schedule(c, hour, minute)
         }
 
 
