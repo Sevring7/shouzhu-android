@@ -36,13 +36,13 @@ class ReminderReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(pi)
             .build()
-'        nm.notify(NOTIF_ID, notif)
+        nm.notify(NOTIF_ID, notif)
 
         // 每天重复：发完立刻排下一天
         val hour = sp.getInt("reminderHour", 21)
         val minute = sp.getInt("reminderMinute", 0)
         if (hour > 0) schedule(context, hour, minute)
-    }'
+    }
 
     companion object {
         const val CHANNEL_ID = "daily_checkin"
