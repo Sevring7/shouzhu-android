@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
 
-# 同一时间只跑一个构建，避免并发抢 SDK / 抢 Release
 concurrency:
   group: apk-build
   cancel-in-progress: false
@@ -16,6 +15,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
@@ -30,9 +32,6 @@ jobs:
 
       - name: Decode keystore
         run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > android/shouzhu.jks
-
-      - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
 
       - name: Build debug APK
         env:
