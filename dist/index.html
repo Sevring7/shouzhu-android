@@ -410,19 +410,27 @@ body[data-scene="rose"] .mini-btn { color: #5a2f3c; background: rgba(90,47,60,.1
 .cal-grid > * { min-width: 0; }
 .cal-cell {
   position: relative; aspect-ratio: 1 / 1; border-radius: 10px; min-width: 0; overflow: hidden;
+  padding: 3px 0 4px; align-items: stretch; justify-content: flex-start;
   border: 1px solid var(--hair-2);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   cursor: pointer;
 }
 .cal-cell.empty { border: none; cursor: default; }
 .cal-cell.today { border-color: rgba(255,255,255,.55); }
-.cal-d { font-size: 11px; color: var(--ink); }
-.cal-m { font-size: 8.5px; color: var(--ink-2); letter-spacing: 0; }
-.cal-f { font-size: 8px; color: var(--good); }
-.cal-due { position: absolute; top: 5px; right: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); }
+.cal-d { font-size: 10.5px; color: var(--ink); line-height: 1; text-align: center; }
+.cal-m { display: none; }
+.cal-f { display: none; }
+'.cal-due { display: none; }
+.cal-bars { display: flex; flex-direction: row; gap: 3px; justify-content: center; margin-top: 4px; }
+.cal-bar { display: block; width: 5px; height: 5px; border-radius: 50%; flex: 0 0 5px; }
+.cal-bar.future { background: #e8b46a; }
+.cal-bar.past { background: rgba(220, 120, 120, .75); }
+.cal-bar.done { background: rgba(120, 200, 150, .8); }
+.cal-more { font-size: 8px; color: var(--ink-3); line-height: 1; align-self: center; }
+.cal-dot { position: absolute; top: 4px; right: 5px; width: 4px; height: 4px; border-radius: 50%; background: var(--bar-focus); }'
 
 /* 日历上的 DDL 标注 */
-.cal-due-name { position: absolute; bottom: 3px; left: 1px; right: 1px; text-align: center; font-size: 7.5px; color: var(--warn); letter-spacing: 0; white-space: nowrap; overflow: hidden; }
+.cal-due-name { display: none; }
 .cal-dues { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; }
 .cal-due-item { font-size: 10.5px; color: var(--ink-3); }
 .cal-due-item b { font-weight: 400; color: var(--warn); margin-right: 5px; }
@@ -766,7 +774,7 @@ html.lite * { transition: none !important; }
         <div class="cal-week" id="calWeek"></div>
         <div class="cal-grid" id="calGrid"></div>
         <div class="cal-dues" id="calDues"></div>
-        <p class="note small">浅色数字 = 计划分钟数；绿色 = 实际专注；黄点 = 这天有 DDL 到期。点某天看细节。</p>
+        <p class="note small">背景越深 = 当天安排越多；橙点 = 有 DDL 到期，绿点 = 已完成，红点 = 已过期。点某天看全部细节。</p>
       </div>
     </section>
 
@@ -914,9 +922,7 @@ html.lite * { transition: none !important; }
           <select id="setAmbience"><option value="0">关</option><option value="1">雨</option><option value="2">浪</option></select>
         </label>
 '        <div class="row"><button class="ghost" id="notifyTest">发送一条测试通知</button></div>
-        <label class="field"><span>今晚提醒</span>'
-          <select id="setReminder"><option value="0">关</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option></select>
-        </label>
+        <label class="field"><span>提醒时间</span><input id="setReminder" type="time" /></label>
         <p class="note small" id="nativeHint">在浏览器里，手机时长要手动记。</p>
         <button class="ghost" id="nativeBtn" hidden>开启自动读取</button>
         <button class="ghost" id="refreshBtn" hidden>重新读取</button>
@@ -1660,7 +1666,7 @@ if (typeof window !== "undefined") window.Planner = Planner;
       scene: "", days: 7, blockMin: 45, timerMode: "countdown",
       pomoWork: 25, pomoBreak: 5,
       phoneBudgetH: 8, sleepH: 8, lifeFloorH: 2, loadFactor: 0.8,
-      ambience: "0", reminderHour: 21, aiKey: "",
+      ambience: "0", reminderHour: 21, reminderMinute: 0, aiKey: "",
     },
     deadlines: [
       { id: "d1", title: "能源经济", due: "2026-11-24", remainingMin: 600, chunk: 60, priority: 3, level: 2, hasPaper: false },
@@ -2659,22 +2665,22 @@ function sleepHours(bed, wake) {
       const blocks = p.plan[k] || [];
       const planned = blocks.reduce((s, b) => s + b.minutes, 0);
       const focus = Number((state.checkins[k] || {}).focusMin) || 0;
-      const due = state.deadlines.filter((x) => x.due === k && !x.done);
+      const dueAll = state.deadlines.filter((x) => x.due === k);
       const isToday = k === todayKey();
       cell.className = "cal-cell" + (isToday ? " today" : "");
-      const alpha = planned ? 0.08 + 0.22 * (planned / maxMin) : 0;
+      const alpha = planned ? 0.06 + 0.16 * (planned / maxMin) : 0;
       if (planned) cell.style.background = `rgba(255,255,255,${alpha.toFixed(2)})`;
-      cell.innerHTML = `<span class="cal-d">${d}</span>` +
-        (planned && !due.length ? `<span class="cal-m">${planned}m</span>` : "") +
-        (focus ? `<span class="cal-f">${focus}m</span>` : "") +
-        due.slice(0, 3).map(() => `<span class="cal-due"></span>`).join("") +
-        (due.length ? `<span class="cal-due-name">${esc(due[0].title.slice(0, 3))}</span>` : "");
+      const bars = dueAll.slice(0, 3).map((x) => {
+        const cls = x.done ? "done" : (new Date(x.due + "T00:00:00") < P.startOfDay(now()) ? "past" : "future");
+        return `<i class="cal-bar ${cls}"></i>`;
+      }).join("");
+      const more = dueAll.length > 3 ? `<span class="cal-more">+${dueAll.length - 3}</span>` : "";
+      cell.innerHTML = `<span class="cal-d">${d}</span><span class="cal-bars">${bars}${more}</span>` +
+        (focus ? `<span class="cal-dot"></span>` : "");
       cell.addEventListener("click", () => openDay(k));
       grid.appendChild(cell);
     });
-
-    const todayStr = todayKey();
-    const dues = state.deadlines.filter((x) => !x.done && x.due >= todayStr).sort((a, b) => a.due.localeCompare(b.due));
+    const dues = state.deadlines.filter((x) => !x.done && x.due >= todayKey()).sort((a, b) => a.due.localeCompare(b.due));
     const dl = document.getElementById("calDues");
     if (dl) {
       dl.innerHTML = dues.length
@@ -2692,16 +2698,34 @@ function sleepHours(bed, wake) {
     const p = plan();
     const blocks = p.plan[k] || [];
     const sessions = (state.sessions || []).filter((s) => s.date === k);
-    const focus = Number((state.checkins[k] || {}).focusMin) || 0;
+    const c = state.checkins[k] || {};
+    const focus = Number(c.focusMin) || 0;
+    const dues = state.deadlines.filter((x) => x.due === k);
     let html = "";
-    html += `<p class="coach-p">计划：${blocks.length} 块，共 ${P.fmtMin(blocks.reduce((s, b) => s + b.minutes, 0))}${focus ? " · 实际专注 " + P.fmtMin(focus) : ""}</p>`;
-    html += blocks.map((b) => `<div class="coach-phase"><b>${b.minutes}m</b><span>${esc(b.title)}${b.label ? " · " + esc(b.label) : ""}</span></div>`).join("") || `<p class="coach-p dim">这天没有安排。</p>`;
-    if (sessions.length) {
-      html += `<p class="coach-p" style="margin-top:14px">实际做了什么</p>` +
-        sessions.map((s) => `<p class="coach-p">${s.start}–${s.end} · ${esc(s.title)} ${s.minutes}m${s.note ? " · " + esc(s.note) : ""}</p>`).join("");
+
+    if (dues.length) {
+      html += `<p class="coach-p" style="margin-bottom:6px">到期</p>`;
+      html += dues.map((x) => {
+        const tag = x.done ? "已完成" : (new Date(x.due + "T00:00:00") < P.startOfDay(now()) ? "已过期" : "未完成");
+        return `<div class="coach-phase"><b>${tag}</b><span>${esc(x.title)}</span></div>`;
+      }).join("");
     }
-    document.getElementById("dayBody").innerHTML = html;
-    document.getElementById("dayMask").hidden = false;
+
+    html += `<p class="coach-p" style="margin-top:14px">计划 ${blocks.length} 块 · ${P.fmtMin(blocks.reduce((s, b) => s + b.minutes, 0))}${focus ? " · 实际专注 " + P.fmtMin(focus) : ""}</p>`;
+    html += blocks.length
+      ? blocks.map((b) => `<div class="coach-phase"><b>${b.minutes}m</b><span>${esc(b.title)}${b.label ? " · " + esc(b.label) : ""}</span></div>`).join("")
+      : `<p class="coach-p dim">这天没有安排。</p>`;
+
+    if (sessions.length) {
+      html += `<p class="coach-p" style="margin-top:14px">实际做了什么</p>`;
+      html += sessions.map((s) => `<p class="coach-p">${s.start}–${s.end} · ${esc(s.title)} ${s.minutes}m${s.note ? " · " + esc(s.note) : ""}</p>`).join("");
+    }
+    if (c.bed || c.wake) {
+      html += `<p class="coach-p" style="margin-top:14px">作息：${c.bed || "—"} → ${c.wake || "—"}${sleepHours(c.bed, c.wake) ? "（" + sleepHours(c.bed, c.wake) + " 小时）" : ""}</p>`;
+    }
+    if (c.phoneH != null) html += `<p class="coach-p">手机 ${c.phoneH} 小时</p>`;
+
+    document.getElementById("dayBody").innerHTML = html;document.getElementById("dayMask").hidden = false;
     document.getElementById("daySheet").hidden = false;
   }
 
@@ -3083,7 +3107,9 @@ function sleepHours(bed, wake) {
     document.getElementById("setPomoWork").value = s.pomoWork;
     document.getElementById("setPomoBreak").value = s.pomoBreak;
     document.getElementById("setAmbience").value = s.ambience;
-    document.getElementById("setReminder").value = String(s.reminderHour || 0);
+    const rh = String(s.reminderHour == null ? 21 : s.reminderHour).padStart(2, "0");
+    const rm = String(s.reminderMinute || 0).padStart(2, "0");
+    document.getElementById("setReminder").value = (s.reminderHour === 0 ? "" : rh + ":" + rm);
     document.getElementById("setKey").value = s.aiKey || "";
     document.getElementById("aiState").textContent = s.aiKey ? "Key 已保存。生成规划时会发给 DeepSeek。" : "不填也能用：走本地规则生成规划。";
     const cap = P.capacityInfo(s);
