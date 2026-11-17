@@ -369,6 +369,28 @@ body[data-scene="rose"] .phone input::placeholder { color: rgba(90,47,60,.4); }
 .noise-row .chip { font-size: 11px; padding: 6px 12px; }
 .noise-row .chip.active { background: rgba(255,255,255,.18); color: var(--ink); border-color: rgba(255,255,255,.5); }
 body[data-scene="rose"] .noise-row .chip.active { background: rgba(90,47,60,.12); border-color: rgba(90,47,60,.35); }
+/* ---------------- 悬浮计时条 ---------------- */
+.mini {
+  position: fixed; right: 14px; bottom: 86px; z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 999px;
+  background: rgba(14, 26, 34, .86);
+  border: 1px solid rgba(255,255,255,.14);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  touch-action: none; cursor: grab;
+  max-width: 78vw;
+}
+.mini-time { font-size: 17px; letter-spacing: .04em; font-variant-numeric: tabular-nums; color: #fff; }
+.mini-task { font-size: 11px; color: rgba(255,255,255,.6); max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-btn {
+  font: inherit; font-size: 11px; color: #fff; background: rgba(255,255,255,.16);
+  border: none; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+}
+body[data-scene="rose"] .mini { background: rgba(255, 247, 250, .95); border-color: rgba(90,47,60,.16); box-shadow: 0 12px 30px rgba(120,70,90,.18); }
+body[data-scene="rose"] .mini-time { color: #5a2f3c; }
+body[data-scene="rose"] .mini-task { color: rgba(90,47,60,.55); }
+body[data-scene="rose"] .mini-btn { color: #5a2f3c; background: rgba(90,47,60,.1); }
 /* ---------------- 日历 ---------------- */
 .cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 10px; font-size: 10px; color: var(--ink-3); text-align: center; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
@@ -705,6 +727,12 @@ html.lite * { transition: none !important; }
 
       <div class="glass panel">
         <div class="panel-head"><span>DDL</span><button class="link" id="addBtn">添加</button></div>
+        <div class="range-bar" id="ddlTabs">
+          <button class="chip active" data-tab="todo">未完成</button>
+          <button class="chip" data-tab="done">已完成</button>
+          <button class="chip" data-tab="expired">已过期</button>
+          <button class="chip" data-tab="all">全部</button>
+        </div>
         <div class="rows" id="ddlList"></div>
       </div>
       <p class="risk" id="riskList"></p>
@@ -905,7 +933,10 @@ html.lite * { transition: none !important; }
     <div class="focus-mode" id="focusMode">倒计时</div>
     <div class="focus-time" id="focusTime">45:00</div>
     <div class="focus-hint" id="focusHint">专注时把手机放下</div>
-    <div class="noise-row" id="noiseRow">
+'    <div class="focus-actions">
+      <button class="focus-btn ghost" id="focusMin">最小化</button>
+    </div>
+    <div class="noise-row" id="noiseRow">'
       <button class="chip" data-noise="0">静音</button>
       <button class="chip" data-noise="1">雨</button>
       <button class="chip" data-noise="2">风</button>
@@ -1003,7 +1034,13 @@ html.lite * { transition: none !important; }
   <div id="dayBody" class="coach-body"></div>
 </div>
 
-<div class="toast" id="toast" hidden></div>
+'<div class="mini" id="mini" hidden>
+  <span class="mini-time" id="miniTime">45:00</span>
+  <span class="mini-task" id="miniTask"></span>
+  <button class="mini-btn" id="miniPause">暂停</button>
+</div>
+
+<div class="toast" id="toast" hidden></div>'
 
 <script>
 /* ============================================================
@@ -1666,6 +1703,9 @@ if (typeof window !== "undefined") window.Planner = Planner;
     return done;
   }
 
+let uidSeq = 0;
+  function newUid() { return "b" + Date.now().toString(36) + (++uidSeq).toString(36); }
+
   function persist() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast("保存失败"); }
   }
@@ -1753,7 +1793,7 @@ if (typeof window !== "undefined") window.Planner = Planner;
   }
   function freezeToday(p) {
     if (state.todayPlan && state.todayPlan.date === todayKey()) return;
-    const blocks = (p.plan[todayKey()] || []).map((b) => ({ ...b }));
+    const blocks = (p.plan[todayKey()] || []).map((b) => ({ ...b, uid: b.uid || newUid() }));
     // 即使今天没有自动排程，也要建一个空的 todayPlan，
     // 否则「加一块」「完成一块」会因为没有容器而静默失败
     state.todayPlan = { date: todayKey(), blocks };
@@ -1908,6 +1948,30 @@ if (typeof window !== "undefined") window.Planner = Planner;
     document.getElementById("focusMiss").textContent = f.mode === "stopwatch" ? "不算完成" : "没做完";
     renderFocus();
   }
+  /* 计时中最小化成悬浮条 */
+  function showMini() {
+    const f = state.focus; if (!f) return hideMini();
+    const el = document.getElementById("mini");
+    el.hidden = false;
+    document.body.classList.remove("focusing");
+    closeFocusUI();
+    renderMini();
+  }
+  function hideMini() {
+    const el = document.getElementById("mini");
+    if (el) el.hidden = true;
+  }
+  function renderMini() {
+    const f = state.focus; if (!f) return hideMini();
+    const t = document.getElementById("miniTime");
+    const task = document.getElementById("miniTask");
+    const btn = document.getElementById("miniPause");
+    if (!t) return;
+    if (f.mode === "stopwatch") t.textContent = mmss(focusElapsed(f));
+    else t.textContent = mmss(phaseRemaining(f));
+    task.textContent = f.title + (f.mode === "pomodoro" ? " · " + (f.phase === "work" ? "专注" : "休息") : "");
+    btn.textContent = f.paused ? "继续" : "暂停";
+  }
   function closeFocusUI() {
     const el = document.getElementById("focus");
     el.hidden = true; el.classList.remove("out");
@@ -1928,6 +1992,7 @@ if (typeof window !== "undefined") window.Planner = Planner;
       label.textContent = "倒计时";
       t.textContent = mmss(phaseRemaining(f));
     }
+    if (document.getElementById("mini") && !document.getElementById("mini").hidden) renderMini();
     if (f.paused) hint.textContent = `已暂停 ${mmss(Date.now() - (f.pauseStart || Date.now()))}`;
     else hint.textContent = f.phase === "break" ? "休息一下" : "专注时把手机放下";
   }
@@ -2140,9 +2205,17 @@ if (typeof window !== "undefined") window.Planner = Planner;
     return phases[Math.min(phases.length - 1, Math.floor(ratio * phases.length))].name || "";
   }
 
-  function removeBlockToday(index) {
+  function blockIndex(uid) {
+    const list = (state.todayPlan && state.todayPlan.blocks) || [];
+    let i = list.findIndex((b) => b.uid === uid);
+    if (i < 0) i = list.findIndex((b) => b.uid == null && (b.deadlineId + "|" + b.title + "|" + b.minutes) === uid);
+    return i;
+  }
+
+  function removeBlockToday(uid) {
     if (!state.todayPlan || state.todayPlan.date !== todayKey()) return;
-    const b = state.todayPlan.blocks[index];
+    const index = blockIndex(uid);
+    const b = index >= 0 ? state.todayPlan.blocks[index] : null;
     if (!b) return;
     if (!confirm(`把「${b.title}」从今天拿掉？`)) return;
     state.todayPlan.blocks.splice(index, 1);
@@ -2214,13 +2287,13 @@ if (typeof window !== "undefined") window.Planner = Planner;
       const del = document.createElement("span");
       del.className = "app-del";
       del.textContent = "删";
-      del.addEventListener("click", (e) => { e.stopPropagation(); removeBlockToday(idx); });
+      del.addEventListener("click", (e) => { e.stopPropagation(); removeBlockToday(b.uid || (b.deadlineId + "|" + b.title + "|" + b.minutes)); });
       row.appendChild(del);
       if (!isDone) {
         const defer = document.createElement("span");
         defer.className = "app-del";
         defer.textContent = "推迟";
-        defer.addEventListener("click", (e) => { e.stopPropagation(); deferBlockToday(idx); });
+        defer.addEventListener("click", (e) => { e.stopPropagation(); deferBlockToday(b.uid || (b.deadlineId + "|" + b.title + "|" + b.minutes)); });
         row.appendChild(defer);
       }
       row.addEventListener("click", () => { if (!isDone) startFocus(b); });
@@ -2308,58 +2381,76 @@ if (typeof window !== "undefined") window.Planner = Planner;
   }
 
   /* ---------------- 安排 ---------------- */
+  let ddlTab = "todo";
   function renderDDL() {
     renderTimeline();
     const p = plan();
     const list = document.getElementById("ddlList");
     list.innerHTML = "";
-    const ds = state.deadlines
-      .map((x) => ({ ...x, dleft: P.daysBetween(now(), new Date(x.due + "T00:00:00")) }))
-      .filter((x) => x.dleft >= 0 && !x.done)
-      .sort((a, b) => a.dleft - b.dleft);
-    if (!ds.length) list.innerHTML = `<p class="empty">还没有 DDL。</p>`;
-    // 已完成：可以撤销（误标完成时用）
-    const doneList = state.deadlines.filter((x) => x.done);
-    if (doneList.length) {
-      const wrap = document.createElement("div");
-      wrap.className = "rows";
-      doneList.forEach((x) => {
-        const row = document.createElement("div");
-        row.className = "row done";
-        row.innerHTML = `<span class="tick"></span><span class="row-body"><span class="row-title">${esc(x.title)}</span>
-          <span class="row-meta">已完成</span></span><span class="row-right">撤销</span>`;
-        row.addEventListener("click", () => {
-          x.done = false;
-          x.remainingMin = Math.max(30, Number(x.remainingMin) || 0);
-          persist();
-          materializeDdl(x, true);
-          renderAll();
-          toast(`「${x.title}」已恢复`, 2000);
-        });
-        wrap.appendChild(row);
-      });
-      list.appendChild(wrap);
+    const all = state.deadlines.map((x) => ({ ...x, dleft: P.daysBetween(now(), new Date(x.due + "T00:00:00")) }));
+    const weekStart = P.ymd(new Date(now().getTime() - 6 * P.MS_DAY));
+
+    let items;
+    if (ddlTab === "done") items = all.filter((x) => x.done).sort((a, b) => b.dleft - a.dleft);
+    else if (ddlTab === "expired") items = all.filter((x) => !x.done && x.dleft < 0).sort((a, b) => b.dleft - a.dleft);
+    else if (ddlTab === "all") items = all.slice().sort((a, b) => a.dleft - b.dleft);
+    else items = all.filter((x) => !x.done && x.dleft >= 0).sort((a, b) => a.dleft - b.dleft);
+
+    // 非「全部」时只显示近七天
+    if (ddlTab === "todo") items = items.filter((x) => x.dleft <= 7);
+    else if (ddlTab === "done" || ddlTab === "expired") items = items.filter((x) => x.dleft >= -7);
+
+    if (!items.length) {
+      list.innerHTML = `<p class="empty">${ddlTab === "done" ? "近七天没有完成的 DDL" : ddlTab === "expired" ? "近七天没有过期的 DDL" : "近七天没有要做的 DDL"}</p>`;
     }
-    ds.forEach((x) => {
+
+    const renderRow = (x) => {
       const plannedToday = (p.plan[todayKey()] || []).filter((b) => b.deadlineId === x.id).length;
-      const weekStart = P.ymd(new Date(now().getTime() - 6 * P.MS_DAY));
       const mine = (state.sessions || []).filter((s) => s.deadlineId === x.id && s.date >= weekStart);
       const weekMin = mine.reduce((a, s) => a + (Number(s.minutes) || 0), 0);
       const lastNote = mine.length ? mine[mine.length - 1].note : "";
       const row = document.createElement("div");
-      row.className = "row";
+      row.className = "row" + (x.done ? " done" : "");
+      const meta = x.done
+        ? "已完成" + (x.due ? " · " + x.due.slice(5) : "")
+        : x.dleft < 0
+        ? "已过期 " + Math.abs(x.dleft) + " 天 · 剩 " + P.fmtMin(x.remainingMin)
+        : (x.dleft === 0 ? "今天" : x.dleft + " 天") + " · 剩 " + P.fmtMin(x.remainingMin) + " · 七天专注 " + P.fmtMin(weekMin);
       row.innerHTML = `
         <span class="row-body">
           <span class="row-title">${esc(x.title)}</span>
-          <span class="row-meta">${x.dleft === 0 ? "今天" : x.dleft + " 天"} · 剩 ${P.fmtMin(x.remainingMin)} · ${x.chunk} 分钟/次 · 七天专注 ${P.fmtMin(weekMin)}</span>
+          <span class="row-meta">${meta}</span>
           ${lastNote ? `<span class="row-meta">最近：${esc(lastNote)}</span>` : ""}
         </span>
-        <span class="row-right">${plannedToday ? "今日 " + plannedToday + " 块" : ""} <span class="app-del" data-done="${x.id}">完成</span></span>`;
+        <span class="row-right">${x.done ? "" : plannedToday ? "今日 " + plannedToday + " 块" : ""} <span class="app-del" data-act="${x.id}">${x.done ? "撤销" : "完成"}</span></span>`;
       row.addEventListener("click", () => openSheet(x.id));
-      const doneBtn = row.querySelector("[data-done]");
-      if (doneBtn) doneBtn.addEventListener("click", (e) => { e.stopPropagation(); completeDdl(x.id); });
+      const btn = row.querySelector("[data-act]");
+      if (btn) btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (x.done) {
+          x.done = false;
+          x.remainingMin = Math.max(30, Number(x.remainingMin) || 0);
+          persist(); materializeDdl(x, true); renderAll();
+          toast("「" + x.title + "」已恢复", 2000);
+        } else completeDdl(x.id);
+      });
       list.appendChild(row);
-    });
+    };
+
+    if (ddlTab === "all") {
+      const groups = {};
+      items.forEach((x) => { const g = (x.due || "0000-00").slice(0, 7); (groups[g] = groups[g] || []).push(x); });
+      Object.keys(groups).sort().reverse().forEach((g) => {
+        const head = document.createElement("p");
+        head.className = "note small";
+        head.style.margin = "10px 0 4px";
+        head.textContent = g.replace("-", " 年 ") + " 月";
+        list.appendChild(head);
+        groups[g].forEach(renderRow);
+      });
+    } else {
+      items.forEach(renderRow);
+    }
 
     const rl = document.getElementById("riskList");
     if (!p.risk.length) { rl.className = "risk empty-risk"; rl.innerHTML = ""; }
@@ -2505,7 +2596,8 @@ if (typeof window !== "undefined") window.Planner = Planner;
       grid.appendChild(cell);
     });
 
-    const dues = state.deadlines.filter((x) => !x.done).sort((a, b) => a.due.localeCompare(b.due));
+    const todayStr = todayKey();
+    const dues = state.deadlines.filter((x) => !x.done && x.due >= todayStr).sort((a, b) => a.due.localeCompare(b.due));
     const dl = document.getElementById("calDues");
     if (dl) {
       dl.innerHTML = dues.length
@@ -2798,7 +2890,7 @@ if (typeof window !== "undefined") window.Planner = Planner;
         const mins = a.minutes || (coachDl ? clampMin(coachDl.chunk, 45) : 25);
         if (!state.todayPlan || state.todayPlan.date !== todayKey()) freezeToday(plan());
         const dl = findDeadline(target);
-        state.todayPlan.blocks.push({ deadlineId: dl ? dl.id : "manual", title: target, minutes: Math.min(240, Math.max(5, mins)), due: dl ? dl.due : todayKey(), manual: !dl });
+        state.todayPlan.blocks.push({ uid: newUid(), deadlineId: dl ? dl.id : "manual", title: target, minutes: Math.min(240, Math.max(5, mins)), due: dl ? dl.due : todayKey(), manual: !dl });
         state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
         done.push(`今天加了「${target} ${mins} 分钟」`);
       }
@@ -3044,7 +3136,7 @@ if (typeof window !== "undefined") window.Planner = Planner;
     // 今天的块写进 todayPlan
     if (!state.todayPlan || state.todayPlan.date !== todayKey()) freezeToday(plan());
     const todayBlocks = blocks.filter((b) => b.date === todayKey()).map((b) => ({
-      deadlineId: d.id, title: d.title, minutes: b.minutes, due: d.due, label: b.label, fromPlan: true,
+      uid: newUid(), deadlineId: d.id, title: d.title, minutes: b.minutes, due: d.due, label: b.label, fromPlan: true,
     }));
     if (state.todayPlan) {
       state.todayPlan.blocks = state.todayPlan.blocks.filter((b) => b.deadlineId !== d.id).concat(todayBlocks);
@@ -3486,7 +3578,33 @@ async function lanTest() {
       });
     });
 
-    document.getElementById("focusPause").addEventListener("click", togglePause);
+document.getElementById("focusPause").addEventListener("click", togglePause);
+    document.getElementById("focusMin").addEventListener("click", showMini);
+    document.getElementById("mini").addEventListener("click", (e) => {
+      if (e.target.id === "miniPause") return;
+      document.getElementById("mini").hidden = true;
+      openFocusUI();
+    });
+    document.getElementById("miniPause").addEventListener("click", (e) => { e.stopPropagation(); togglePause(); });
+    (function makeMiniDraggable() {
+      const el = document.getElementById("mini");
+      let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+      el.addEventListener("pointerdown", (e) => {
+        if (e.target.id === "miniPause") return;
+        dragging = true; sx = e.clientX; sy = e.clientY;
+        const r = el.getBoundingClientRect();
+        ox = r.left; oy = r.top;
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const nx = Math.max(4, Math.min(window.innerWidth - el.offsetWidth - 4, ox + e.clientX - sx));
+        const ny = Math.max(4, Math.min(window.innerHeight - el.offsetHeight - 70, oy + e.clientY - sy));
+        el.style.left = nx + "px"; el.style.top = ny + "px";
+        el.style.right = "auto"; el.style.bottom = "auto";
+      });
+      el.addEventListener("pointerup", () => { dragging = false; });
+    })();
     document.getElementById("focusPlus").addEventListener("click", addTime);
     document.getElementById("focusDone").addEventListener("click", () => finishFocus("done"));
     document.getElementById("focusMiss").addEventListener("click", () => finishFocus("miss"));
@@ -3527,6 +3645,14 @@ async function lanTest() {
       });
     });
 
+document.querySelectorAll("#ddlTabs .chip").forEach((b) => {
+      b.addEventListener("click", () => {
+        ddlTab = b.dataset.tab;
+        document.querySelectorAll("#ddlTabs .chip").forEach((x) => x.classList.toggle("active", x === b));
+        renderDDL();
+      });
+    });
+
     document.getElementById("addBlockBtn").addEventListener("click", addBlockToday);
     document.getElementById("addSave").addEventListener("click", saveAddBlock);
     document.getElementById("addClose").addEventListener("click", () => { document.getElementById("addMask").hidden = true; document.getElementById("addSheet").hidden = true; });
@@ -3547,7 +3673,7 @@ async function lanTest() {
       const mins = clampMin(coachDl.chunk, 45);
       if (!state.todayPlan || state.todayPlan.date !== todayKey()) freezeToday(plan());
       if (!state.todayPlan) freezeToday(plan());
-      state.todayPlan.blocks.push({ deadlineId: coachDl.id, title: coachDl.title, minutes: mins, due: coachDl.due, label: "今天加排" });
+      state.todayPlan.blocks.push({ uid: newUid(), deadlineId: coachDl.id, title: coachDl.title, minutes: mins, due: coachDl.due, label: "今天加排" });
       state.history[todayKey()] = state.todayPlan.blocks.map((b) => ({ deadlineId: b.deadlineId, title: b.title, minutes: b.minutes }));
       persist(); renderAll(); renderCoach();
       toast("已在今天加一块「" + coachDl.title + " " + mins + " 分钟」", 2400);
@@ -3784,7 +3910,7 @@ async function lanTest() {
 
   window.App = {
     setPhoneHours, seedDemo, renderAll, switchView, state: () => state,
-    startFocus, importShot, coachData, answerAsk, finishFocus, completeDdl, applyActions, findDeadline, getPlan: () => plan(),
+    startFocus, importShot, coachData, answerAsk, finishFocus, completeDdl, applyActions, findDeadline, getPlan: () => plan(), removeBlockToday, deferBlockToday, setDdlTab: (t) => { ddlTab = t; renderDDL(); },
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
