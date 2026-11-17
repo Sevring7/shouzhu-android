@@ -10,6 +10,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
         val sp = context.getSharedPreferences("shouzhu", Context.MODE_PRIVATE)
         val hour = sp.getInt("reminderHour", 21)
-        if (hour > 0) ReminderReceiver.schedule(context, hour)
+        val minute = sp.getInt("reminderMinute", 0)
+        if (hour > 0) ReminderReceiver.schedule(context, hour, minute)
     }
 }

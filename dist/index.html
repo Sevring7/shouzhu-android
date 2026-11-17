@@ -3109,7 +3109,8 @@ function sleepHours(bed, wake) {
     document.getElementById("setAmbience").value = s.ambience;
     const rh = String(s.reminderHour == null ? 21 : s.reminderHour).padStart(2, "0");
     const rm = String(s.reminderMinute || 0).padStart(2, "0");
-    document.getElementById("setReminder").value = (s.reminderHour === 0 ? "" : rh + ":" + rm);
+    const remEl = document.getElementById("setReminder");
+    if (remEl && document.activeElement !== remEl) remEl.value = (s.reminderHour === 0 ? "" : rh + ":" + rm);
     document.getElementById("setKey").value = s.aiKey || "";
     document.getElementById("aiState").textContent = s.aiKey ? "Key 已保存。生成规划时会发给 DeepSeek。" : "不填也能用：走本地规则生成规划。";
     const cap = P.capacityInfo(s);
@@ -3960,12 +3961,22 @@ document.querySelectorAll("#ddlTabs .chip").forEach((b) => {
       state.settings.ambience = e.target.value; persist();
       if (state.focus) startAmbience(e.target.value);
     });
-    document.getElementById("setReminder").addEventListener("change", (e) => {
-      const h = parseInt(e.target.value, 10) || 0;
-      state.settings.reminderHour = h; persist();
+    const saveReminder = (e) => {
+      const v = e.target.value || "";
+      const h = v ? parseInt(v.slice(0, 2), 10) : 0;
+      const m = v ? parseInt(v.slice(3, 5), 10) : 0;
+      state.settings.reminderHour = h;
+      state.settings.reminderMinute = m;
+      persist();
       if (window.NativeBridge && window.NativeBridge.scheduleReminder) {
-        window.NativeBridge.scheduleReminder(h); toast(h ? `每晚 ${h}:00 提醒` : "已关闭");
-      } else toast(h ? "浏览器不发通知，装安卓版可用" : "已关闭");
+        window.NativeBridge.scheduleReminder(h, m);
+        pushReminderText();
+        toast(v ? "每天 " + v + " 提醒" : "已关闭提醒");
+      } else toast(v ? "浏览器不发通知，装安卓版可用" : "已关闭提醒");
+    };
+    ["input", "change"].forEach((ev) => {
+      const el = document.getElementById("setReminder");
+      if (el) el.addEventListener(ev, saveReminder);
     });
     document.getElementById("refreshBtn").addEventListener("click", () => { if (!readNative(false)) toast("没读到数据，确认「使用情况访问」已允许", 2800); });
     document.getElementById("nativeBtn").addEventListener("click", () => {
@@ -4041,6 +4052,9 @@ document.querySelectorAll("#ddlTabs .chip").forEach((b) => {
     watchFrames();
 
     setTimeout(pushReminderText, 800);
+    if (window.NativeBridge && window.NativeBridge.scheduleReminder && state.settings.reminderHour > 0) {
+      try { window.NativeBridge.scheduleReminder(state.settings.reminderHour, state.settings.reminderMinute || 0); } catch (e) {}
+    }
     // 有配置就静默拉一次云端
     if (syncCfg().token && syncCfg().gistId) setTimeout(() => syncDownload(true), 1200);
 

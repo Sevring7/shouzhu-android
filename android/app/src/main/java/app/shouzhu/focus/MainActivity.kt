@@ -136,11 +136,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
-        fun scheduleReminder(hour: Int, minute: Int) {
-            val c = ctx ?: return
+        fun scheduleReminder(hour: Int, minute: Int): String {
+            val c = ctx ?: return "error"
             c.getSharedPreferences("shouzhu", Context.MODE_PRIVATE).edit()
                 .putInt("reminderHour", hour).putInt("reminderMinute", minute).apply()
+            if (hour <= 0) { ReminderReceiver.schedule(c, 0, 0); return "off" }
             ReminderReceiver.schedule(c, hour, minute)
+            val am = c.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val exact = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
+                am.canScheduleExactAlarms() else true
+            return if (exact) "exact" else "inexact"
         }
 
 
