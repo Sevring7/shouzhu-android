@@ -486,9 +486,11 @@ body[data-scene="rose"] .mini-btn { color: #5a2f3c; background: rgba(90,47,60,.1
 .axis span { flex: 1; text-align: center; font-size: 9.5px; color: var(--ink-3); font-weight: 300; }
 .legend { display: flex; gap: 20px; margin-top: 16px; font-size: 10px; color: var(--ink-3); letter-spacing: .1em; font-weight: 300; }
 .legend i { display: inline-block; width: 7px; height: 7px; margin-right: 7px; }
-.k-phone { background: rgba(255,255,255,.35); }
+.k-phone { background: var(--bar-phone, rgba(255,255,255,.82)); }
+.k-over { background: var(--bar-phone-over, rgba(255,140,140,.92)); }
+.k-focus { background: var(--bar-focus, #86e0ad); }
 .k-budget { border-top: 1px dashed rgba(255,255,255,.45); height: 0 !important; vertical-align: 3px !important; }
-.k-done { background: rgba(185,230,200,.95); }
+
 .note { margin: 16px 2px 0; font-size: 12.5px; line-height: 1.9; color: var(--ink-2); font-weight: 300; }
 .note.small { font-size: 11.5px; color: var(--ink-3); }
 .note b { font-weight: 400; color: var(--ink); }
@@ -810,7 +812,7 @@ html.lite * { transition: none !important; }
           <div class="chart" id="chart"></div>
         </div>
         <div class="axis" id="axis"></div>
-        <div class="legend"><span><i class="k-phone"></i>手机</span><span><i class="k-budget"></i>预算</span><span><i class="k-done"></i>专注</span></div>
+        <div class="legend"><span><i class="k-phone"></i>手机</span><span><i class="k-over"></i>超预算</span><span><i class="k-budget"></i>预算线</span><span><i class="k-focus"></i>专注</span></div>
       </div>
 
       <p class="note" id="gapLine"></p>
@@ -2244,14 +2246,15 @@ let uidSeq = 0;
     toast(dl ? `已加到今天 · 计入「${dl.title}」` : "已加到今天（不并入 DDL）");
   }
 
-  function deferBlockToday(index) {
+  function deferBlockToday(uid) {
     if (!state.todayPlan || state.todayPlan.date !== todayKey()) return;
-    const b = state.todayPlan.blocks[index];
+    const idx = blockIndex(uid);
+    const b = idx >= 0 ? state.todayPlan.blocks[idx] : null;
     if (!b) return;
     const tKey = P.ymd(new Date(now().getTime() + P.MS_DAY));
     state.custom[tKey] = (state.custom[tKey] || []).filter((x) => !(x.deadlineId === b.deadlineId && x.title === b.title));
     state.custom[tKey].push({ ...b, deferred: true });
-    state.todayPlan.blocks.splice(index, 1);
+    state.todayPlan.blocks.splice(idx, 1);
     state.history[todayKey()] = state.todayPlan.blocks.map((x) => ({ deadlineId: x.deadlineId, title: x.title, minutes: x.minutes }));
     persist();
     renderAll();
@@ -2953,6 +2956,7 @@ const targetH = sleepHours(state.settings.sleepTargetBed || "23:30", state.setti
 
     renderAppStats();
     renderDonut();
+    renderSleep();
     renderSessions();
     renderTrend();
     renderEval();
@@ -4090,6 +4094,16 @@ const existIdx = state.todayPlan.blocks.findIndex((b) => b.deadlineId === coachD
     let lastDay = todayKey();
     setInterval(() => {
       const k = todayKey();
+
+      // 每天 23:50 之后自动读一次手机数据，避免过了零点当天数据漏掉
+      const hh = now().getHours(), mm = now().getMinutes();
+      const ck = checkin();
+      if (hh === 23 && mm >= 50 && !ck.autoRead) {
+        readNative(true);
+        ck.autoRead = true;
+        persist();
+      }
+
       if (k === lastDay) return;
       lastDay = k;
       state.todayPlan = null;
