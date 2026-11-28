@@ -21,6 +21,9 @@
  * ============================================================ */
 
 :root {
+  --bar-phone: rgba(255, 255, 255, .82);
+  --bar-phone-over: rgba(255, 150, 150, .92);
+  --bar-focus: #86e0ad;
   --line-phone: #ff8fae;
   --line-focus: #5fd6a6;
   --ink: rgba(255, 255, 255, .95);
@@ -376,7 +379,7 @@ body[data-scene="rose"] .noise-row .chip.active { background: rgba(90,47,60,.12)
 }
 
 '.sleep-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.sleep-item { display: grid; grid-template-columns: 62px 1fr 52px; gap: 8px; align-items: center; font-size: 11.5px; color: var(--ink-2); }
+.sleep-item { cursor: pointer; display: grid; grid-template-columns: 62px 1fr 52px; gap: 8px; align-items: center; font-size: 11.5px; color: var(--ink-2); }
 .sleep-item .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.14); position: relative; overflow: hidden; }
 .sleep-item .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--bar-focus); border-radius: 3px; }
 body[data-scene="rose"] .sleep-item .bar { background: rgba(90,47,60,.12); }
@@ -476,10 +479,11 @@ body[data-scene="rose"] .mini-btn { color: #5a2f3c; background: rgba(90,47,60,.1
   border-top: 1px dashed rgba(255,255,255,.28);
 }
 .chart { position: relative; display: flex; align-items: flex-end; gap: 10px; height: 120px; padding-top: 18px; }
-.cbar { flex: 1; display: flex; flex-direction: row; justify-content: center; align-items: flex-end; gap: 3px; height: 100%; position: relative; }
-.cbar .phones { width: 58%; background: rgba(255,255,255,.34); border-radius: 3px 3px 0 0; }
-.cbar .focusbar { width: 30%; background: rgba(185,230,200,.9); border-radius: 3px 3px 0 0; }
-.cbar .phones.over { background: rgba(255,185,168,.9); }
+.cbar { flex: 1; display: flex; flex-direction: row; justify-content: center; align-items: flex-end; gap: 3px; height: 100%; position: relative; cursor: pointer; }
+.cbar:hover { filter: brightness(1.12); }
+.cbar .phones { width: 58%; background: var(--bar-phone, rgba(255,255,255,.82)); border-radius: 3px 3px 0 0; }
+.cbar .focusbar { width: 30%; background: var(--bar-focus, #86e0ad); border-radius: 3px 3px 0 0; }
+.cbar .phones.over { background: var(--bar-phone-over, rgba(255,140,140,.92)); }
 
 
 .axis { display: flex; gap: 9px; margin-top: 8px; }
@@ -1061,6 +1065,14 @@ html.lite * { transition: none !important; }
   <div class="sheet-head"><span>要执行这些调整吗</span><button class="link" id="actClose">取消</button></div>
   <div id="actList" class="coach-body"></div>
   <button class="solid" id="actApply">执行</button>
+</div>
+
+<div class="mask" id="sleepMask" hidden></div>
+<div class="sheet" id="sleepSheet" hidden>
+  <div class="sheet-head"><span id="sleepTitle">补填作息</span><button class="link" id="sleepClose">关闭</button></div>
+  <label class="field"><span>入睡</span><input type="time" id="sleepBed" /></label>
+  <label class="field"><span>起床</span><input type="time" id="sleepWake" /></label>
+  <div class="row"><button class="solid" id="sleepSave">保存</button></div>
 </div>
 
 <div class="mask" id="dayMask" hidden></div>
@@ -2782,10 +2794,11 @@ function sleepHours(bed, wake) {
   /* ---------------- 专注构成 / 记录 ---------------- */
   const DONUT_COLORS = ["#ff9ec4", "#8fd3e8", "#b6d98b", "#f5c26b", "#b8a6e8", "#7fc9b3", "#e8a0a0"];
 
-  function renderSleep() {
+function renderSleep() {
     const box = document.getElementById("sleepList");
     if (!box) return;
-    const keys = P.nextDays(new Date(now().getTime() - 6 * P.MS_DAY), 7);
+    let keys = (currentRangeKeys && currentRangeKeys.length) ? currentRangeKeys.slice() : P.nextDays(new Date(now().getTime() - 6 * P.MS_DAY), 7);
+    if (keys.length > 31) keys = keys.slice(-31);
     const rows = keys.map((k) => {
       const c = state.checkins[k] || {};
       return { k, bed: c.bed || "", wake: c.wake || "", h: sleepHours(c.bed, c.wake) };
@@ -2801,7 +2814,7 @@ const targetH = sleepHours(state.settings.sleepTargetBed || "23:30", state.setti
     box.innerHTML = rows.map((r) => {
       const pct = r.h ? Math.min(100, Math.round((r.h / 10) * 100)) : 0;
       const late = r.bed && r.bed >= "01:00" && r.bed < "12:00";
-      return `<div class="sleep-item">
+      return `<div class="sleep-item" data-date="${r.k}">
         <span>${r.k.slice(5).replace("-", "/")}</span>
         <span class="bar"><i style="width:${pct}%"></i></span>
         <span style="text-align:right;color:${late ? "var(--warn)" : "var(--ink-3)"}">${r.h ? r.h + "h" : "—"}</span>
@@ -2810,7 +2823,37 @@ const targetH = sleepHours(state.settings.sleepTargetBed || "23:30", state.setti
         <span></span><span style="font-size:10.5px;color:var(--ink-3)">${r.bed && r.wake ? r.bed + " → " + r.wake : "点「今天」里的时间填"}</span><span></span>
       </div>`;
     }).join("");
+if (box.querySelectorAll) {
+      box.querySelectorAll(".sleep-item[data-date]").forEach((el) => {
+        el.addEventListener("click", () => openSleepEdit(el.dataset.date));
+      });
+    }
   }
+
+  /** 补填某一天的作息 */
+  function openSleepEdit(dateKeyStr) {
+    const c = state.checkins[dateKeyStr] || {};
+    const dt = new Date(dateKeyStr + "T00:00:00");
+    document.getElementById("sleepTitle").textContent = (dt.getMonth() + 1) + " 月 " + dt.getDate() + " 日 · 作息";
+    document.getElementById("sleepBed").value = c.bed || "";
+    document.getElementById("sleepWake").value = c.wake || "";
+    document.getElementById("sleepMask").hidden = false;
+    document.getElementById("sleepSheet").hidden = false;
+    document.getElementById("sleepSave").onclick = () => {
+      const bed = document.getElementById("sleepBed").value;
+      const wake = document.getElementById("sleepWake").value;
+      const rec = state.checkins[dateKeyStr] || (state.checkins[dateKeyStr] = {});
+      rec.bed = bed || null;
+      rec.wake = wake || null;
+      document.getElementById("sleepMask").hidden = true;
+      document.getElementById("sleepSheet").hidden = true;
+      persist();
+      renderAll();
+      const h = sleepHours(bed, wake);
+      toast(h ? "已记录 " + h + " 小时" : "已清除", 2000);
+    };
+  }
+
   function renderDonut() {
     const keys = currentRangeKeys.length ? currentRangeKeys : P.nextDays(new Date(now().getTime() - 6 * P.MS_DAY), 7);
     const inRange = new Set(keys);
@@ -2936,6 +2979,8 @@ const targetH = sleepHours(state.settings.sleepTargetBed || "23:30", state.setti
       el.className = "cbar";
       el.innerHTML = `<div class="phones ${ph > budget ? "over" : ""}" style="height:${hp}px;${ph ? "" : "display:none"}"></div>
         <div class="focusbar" style="height:${hf}px;${focus ? "" : "display:none"}"></div>`;
+if (el.dataset) el.dataset.date = g.keys[0];
+      el.addEventListener("click", () => openDay(g.keys[0]));
       chart.appendChild(el);
       const ax = document.createElement("span");
       ax.textContent = g.label;
@@ -3804,6 +3849,10 @@ document.getElementById("focusMin").addEventListener("click", showMini);
 
     document.getElementById("calPrev").addEventListener("click", () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); });
     document.getElementById("calNext").addEventListener("click", () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); });
+    const closeSleep = () => { document.getElementById("sleepMask").hidden = true; document.getElementById("sleepSheet").hidden = true; };
+    document.getElementById("sleepClose").addEventListener("click", closeSleep);
+    document.getElementById("sleepMask").addEventListener("click", closeSleep);
+
     document.getElementById("dayClose").addEventListener("click", () => { document.getElementById("dayMask").hidden = true; document.getElementById("daySheet").hidden = true; });
     document.getElementById("dayMask").addEventListener("click", () => { document.getElementById("dayMask").hidden = true; document.getElementById("daySheet").hidden = true; });
 
